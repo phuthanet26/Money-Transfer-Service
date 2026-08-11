@@ -5,7 +5,9 @@ import com.assignment.money_transfer_service.dto.request.AccountRequest;
 import com.assignment.money_transfer_service.dto.request.DepositRequest;
 import com.assignment.money_transfer_service.dto.request.WithdrawRequest;
 import com.assignment.money_transfer_service.dto.response.AccountResponse;
+import com.assignment.money_transfer_service.dto.response.BalanceResponse;
 import com.assignment.money_transfer_service.dto.response.DepositResponse;
+import com.assignment.money_transfer_service.dto.response.PagedTransactionResponse;
 import com.assignment.money_transfer_service.dto.response.WithdrawResponse;
 import com.assignment.money_transfer_service.service.AccountService;
 import jakarta.validation.Valid;
@@ -72,6 +74,21 @@ public class AccountController {
             @PathVariable Long accountId,
             @Valid @RequestBody WithdrawRequest request) {
         WithdrawResponse response = accountService.withdraw(accountId, request.getAmount());
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{accountId}/balance")
+    public ResponseEntity<BalanceResponse> getBalance(@PathVariable Long accountId) {
+        BalanceResponse response = accountService.getBalance(accountId);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{accountId}/transactions")
+    public ResponseEntity<PagedTransactionResponse> getTransactions(
+            @PathVariable Long accountId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        PagedTransactionResponse response = accountService.getTransactions(accountId, page, size);
         return ResponseEntity.ok(response);
     }
 }

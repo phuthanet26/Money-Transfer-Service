@@ -5,7 +5,10 @@ import com.assignment.money_transfer_service.domain.AccountStatus;
 import com.assignment.money_transfer_service.domain.EntryType;
 import com.assignment.money_transfer_service.domain.LedgerEntryEntity;
 import com.assignment.money_transfer_service.dto.response.AccountResponse;
+import com.assignment.money_transfer_service.dto.response.BalanceResponse;
 import com.assignment.money_transfer_service.dto.response.DepositResponse;
+import com.assignment.money_transfer_service.dto.response.PagedTransactionResponse;
+import com.assignment.money_transfer_service.dto.response.TransactionResponse;
 import com.assignment.money_transfer_service.dto.response.WithdrawResponse;
 import com.assignment.money_transfer_service.exception.AccountNotFoundException;
 import com.assignment.money_transfer_service.repository.AccountRepository;
@@ -150,6 +153,65 @@ public class AccountService {
             throw new IllegalArgumentException("Account is not active: " + accountId);
         }
         return account;
+    }
+
+    @Transactional(readOnly = true)
+    public BalanceResponse getBalance(Long accountId) {
+        AccountEntity account = getAccountOrThrow(accountId);
+        return BalanceResponse.builder()
+                .accountId(account.getId())
+                .balance(account.getBalance())
+                .currency(account.getCurrency())
+                .asOf(LocalDateTime.now())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public PagedTransactionResponse getTransactions(Long accountId, int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("Page must be >= 0");
+        }
+        if (size < 1 || size > 100) {
+            throw new IllegalArgumentException("Size must be between 1 and 100");
+        }
+        
+        AccountEntity account = getAccountOrThrow(accountId);
+        
+        List<LedgerEntryEntity> ledgerEntries = ledgerService.getLedgerEntriesByAccount(accountId);
+        
+        int start = page * size;
+        int end = Math.min(start + size, ledgerEntries.size());
+        
+        List<TransactionResponse> items;
+        if (start >= ledgerEntries.size()) {
+            items = List.of();
+        } else {
+            items = ledgerEntries.subList(start, end).stream()
+                    .map(this::toTransactionResponse)
+                    .toList();
+        }
+        
+        int totalElements = ledgerEntries.size();
+        int totalPages = (int) Math.ceil((double) totalElements / size);
+        
+        return PagedTransactionResponse.builder()
+                .accountId(accountId)
+                .page(page)
+                .size(size)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .items(items)
+                .build();
+    }
+
+    private TransactionResponse toTransactionResponse(LedgerEntryEntity entry) {
+        return TransactionResponse.builder()
+                .id(entry.getId())
+                .entryType(entry.getType().name())
+                .amount(entry.getAmount())
+                .balanceAfter(entry.getBalanceAfter())
+                .createdAt(entry.getCreatedAt())
+                .build();
     }
 
     private AccountEntity getAccountOrThrow(Long accountId) {

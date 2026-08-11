@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -32,5 +33,10 @@ public class LedgerService {
         entry.setCreatedAt(LocalDateTime.now());
         
         return ledgerEntryRepository.save(entry);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LedgerEntryEntity> getLedgerEntriesByAccount(Long accountId) {
+        return ledgerEntryRepository.findByAccount_IdOrderByCreatedAtDesc(accountId);
     }
 }
