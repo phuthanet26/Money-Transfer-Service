@@ -14,6 +14,8 @@ import com.assignment.money_transfer_service.exception.AccountNotFoundException;
 import com.assignment.money_transfer_service.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,6 +64,7 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "accounts", key = "#accountId")
     public AccountResponse getAccountById(Long accountId) {
         AccountEntity account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId));
@@ -69,6 +72,7 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "accounts", key = "#accountNumber")
     public AccountResponse getAccountByNumber(String accountNumber) {
         AccountEntity account = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
@@ -83,6 +87,7 @@ public class AccountService {
                 .toList();
     }
 
+    @CachePut(value = "accounts", key = "#accountId")
     public AccountResponse updateAccountStatus(Long accountId, AccountStatus status) {
         AccountEntity account = getAccountOrThrow(accountId);
         account.setStatus(status);
@@ -91,6 +96,7 @@ public class AccountService {
         return toResponse(updatedAccount);
     }
 
+    @CachePut(value = "accounts", key = "#accountId")
     public DepositResponse deposit(Long accountId, BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be positive");
@@ -117,6 +123,7 @@ public class AccountService {
                 .build();
     }
 
+    @CachePut(value = "accounts", key = "#accountId")
     public WithdrawResponse withdraw(Long accountId, BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be positive");
