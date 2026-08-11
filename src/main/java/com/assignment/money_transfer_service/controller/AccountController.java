@@ -2,7 +2,11 @@ package com.assignment.money_transfer_service.controller;
 
 import com.assignment.money_transfer_service.domain.AccountStatus;
 import com.assignment.money_transfer_service.dto.request.AccountRequest;
+import com.assignment.money_transfer_service.dto.request.DepositRequest;
+import com.assignment.money_transfer_service.dto.request.WithdrawRequest;
 import com.assignment.money_transfer_service.dto.response.AccountResponse;
+import com.assignment.money_transfer_service.dto.response.DepositResponse;
+import com.assignment.money_transfer_service.dto.response.WithdrawResponse;
 import com.assignment.money_transfer_service.service.AccountService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +56,22 @@ public class AccountController {
             @PathVariable Long accountId,
             @RequestParam AccountStatus status) {
         AccountResponse response = accountService.updateAccountStatus(accountId, status);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{accountId}/deposit")
+    public ResponseEntity<DepositResponse> deposit(
+            @PathVariable Long accountId,
+            @Valid @RequestBody DepositRequest request) {
+        DepositResponse response = accountService.deposit(accountId, request.getAmount());
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{accountId}/withdraw")
+    public ResponseEntity<WithdrawResponse> withdraw(
+            @PathVariable Long accountId,
+            @Valid @RequestBody WithdrawRequest request) {
+        WithdrawResponse response = accountService.withdraw(accountId, request.getAmount());
         return ResponseEntity.ok(response);
     }
 }

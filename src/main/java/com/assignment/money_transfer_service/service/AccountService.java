@@ -2,7 +2,11 @@ package com.assignment.money_transfer_service.service;
 
 import com.assignment.money_transfer_service.domain.AccountEntity;
 import com.assignment.money_transfer_service.domain.AccountStatus;
+import com.assignment.money_transfer_service.domain.EntryType;
+import com.assignment.money_transfer_service.domain.LedgerEntryEntity;
 import com.assignment.money_transfer_service.dto.response.AccountResponse;
+import com.assignment.money_transfer_service.dto.response.DepositResponse;
+import com.assignment.money_transfer_service.dto.response.WithdrawResponse;
 import com.assignment.money_transfer_service.exception.AccountNotFoundException;
 import com.assignment.money_transfer_service.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +25,7 @@ import java.util.List;
 public class AccountService {
 
     private final AccountRepository accountRepository;
+    private final LedgerService ledgerService;
 
     public AccountResponse createAccount(String accountNumber, String ownerName, String currency) {
         validateAccountCreation(accountNumber, ownerName, currency);
@@ -81,6 +86,70 @@ public class AccountService {
         account.setUpdatedAt(LocalDateTime.now());
         AccountEntity updatedAccount = accountRepository.save(account);
         return toResponse(updatedAccount);
+    }
+
+    public DepositResponse deposit(Long accountId, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Amount must be positive");
+        }
+        
+        AccountEntity account = getActiveAccount(accountId);
+        
+        account.setBalance(account.getBalance().add(amount));
+        account.setUpdatedAt(LocalDateTime.now());
+        AccountEntity updatedAccount = accountRepository.save(account);
+        
+        LedgerEntryEntity ledgerEntry = ledgerService.createLedgerEntry(
+                account,
+                null,
+                amount,
+                EntryType.CREDIT,
+                updatedAccount.getBalance()
+        );
+        
+        return DepositResponse.builder()
+                .accountId(updatedAccount.getId())
+                .balance(updatedAccount.getBalance())
+                .ledgerEntryId(ledgerEntry.getId())
+                .build();
+    }
+
+    public WithdrawResponse withdraw(Long accountId, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Amount must be positive");
+        }
+        
+        AccountEntity account = getActiveAccount(accountId);
+        
+        if (account.getBalance().compareTo(amount) < 0) {
+            throw new IllegalArgumentException("Insufficient balance");
+        }
+        
+        account.setBalance(account.getBalance().subtract(amount));
+        account.setUpdatedAt(LocalDateTime.now());
+        AccountEntity updatedAccount = accountRepository.save(account);
+        
+        LedgerEntryEntity ledgerEntry = ledgerService.createLedgerEntry(
+                account,
+                null,
+                amount,
+                EntryType.DEBIT,
+                updatedAccount.getBalance()
+        );
+        
+        return WithdrawResponse.builder()
+                .accountId(updatedAccount.getId())
+                .balance(updatedAccount.getBalance())
+                .ledgerEntryId(ledgerEntry.getId())
+                .build();
+    }
+
+    private AccountEntity getActiveAccount(Long accountId) {
+        AccountEntity account = getAccountOrThrow(accountId);
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new IllegalArgumentException("Account is not active: " + accountId);
+        }
+        return account;
     }
 
     private AccountEntity getAccountOrThrow(Long accountId) {
