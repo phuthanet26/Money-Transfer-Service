@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: money-transfer-service
+  
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=money_transfer_db;encrypt=true;trustServerCertificate=true
+    username: sa
+    password: YourStrong@Passw0rd
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.SQLServerDialect
+        format_sql: true
+        
+server:
+  port: 8081
+  servlet:
+    context-path: /api/v1
+  
+logging:
+  level:
+    com.assignment.money_transfer_service: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
