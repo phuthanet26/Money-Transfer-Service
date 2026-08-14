@@ -9,8 +9,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/transfers")
 @RequiredArgsConstructor
@@ -29,18 +27,14 @@ public class TransferController {
                 request.getAmount(),
                 request.getCurrency()
         );
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Location", "/api/v1/transfers/" + response.getTransferId())
+                .body(response);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<TransferResponse> getTransferById(@PathVariable Long id) {
         TransferResponse response = transferService.getTransferById(id);
         return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/account/{accountId}")
-    public ResponseEntity<List<TransferResponse>> getTransfersByAccount(@PathVariable Long accountId) {
-        List<TransferResponse> responses = transferService.getTransfersByAccount(accountId);
-        return ResponseEntity.ok(responses);
     }
 }

@@ -17,7 +17,6 @@ public class TransferRequest {
     private Long toAccountId;
 
     @NotNull(message = "Amount is required")
-    @Positive(message = "Amount must be positive")
     private BigDecimal amount;
 
     @NotBlank(message = "Currency is required")

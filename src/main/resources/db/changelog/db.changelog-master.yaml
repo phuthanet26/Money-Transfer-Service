@@ -19,7 +19,7 @@ databaseChangeLog:
                     unique: true
               - column:
                   name: owner_name
-                  type: VARCHAR(120)
+                  type: NVARCHAR(120)
                   constraints:
                     nullable: false
               - column:
@@ -47,6 +47,26 @@ databaseChangeLog:
                   type: DATETIME
                   constraints:
                     nullable: false
+        - addDefaultValue:
+            columnName: balance
+            tableName: account
+            defaultValue: 0
+        - addDefaultValue:
+            columnName: status
+            tableName: account
+            defaultValue: ACTIVE
+        - addDefaultValue:
+            columnName: created_at
+            tableName: account
+            defaultValueComputed: SYSUTCDATETIME()
+        - addDefaultValue:
+            columnName: updated_at
+            tableName: account
+            defaultValueComputed: SYSUTCDATETIME()
+        - sql:
+            sql: ALTER TABLE account ADD CONSTRAINT CK_account_balance CHECK (balance >= 0)
+        - sql:
+            sql: ALTER TABLE account ADD CONSTRAINT CK_account_status CHECK (status IN ('ACTIVE','FROZEN','CLOSED'))
 
   - changeSet:
       id: create-transfer-table
@@ -98,12 +118,20 @@ databaseChangeLog:
                     nullable: false
               - column:
                   name: failure_reason
-                  type: VARCHAR(255)
+                  type: NVARCHAR(255)
               - column:
                   name: created_at
                   type: DATETIME
                   constraints:
                     nullable: false
+        - addDefaultValue:
+            columnName: created_at
+            tableName: transfer
+            defaultValueComputed: SYSUTCDATETIME()
+        - sql:
+            sql: ALTER TABLE transfer ADD CONSTRAINT CK_transfer_amount CHECK (amount > 0)
+        - sql:
+            sql: ALTER TABLE transfer ADD CONSTRAINT CK_transfer_status CHECK (status IN ('PENDING','COMPLETED','FAILED'))
 
   - changeSet:
       id: create-ledger-entry-table
@@ -145,6 +173,14 @@ databaseChangeLog:
                   type: DATETIME
                   constraints:
                     nullable: false
+        - addDefaultValue:
+            columnName: created_at
+            tableName: ledger_entry
+            defaultValueComputed: SYSUTCDATETIME()
+        - sql:
+            sql: ALTER TABLE ledger_entry ADD CONSTRAINT CK_ledger_type CHECK (type IN ('DEBIT','CREDIT'))
+        - sql:
+            sql: ALTER TABLE ledger_entry ADD CONSTRAINT CK_ledger_amount CHECK (amount > 0)
         - createIndex:
             indexName: idx_account_id
             tableName: ledger_entry
@@ -203,6 +239,16 @@ databaseChangeLog:
               - column:
                   name: published_at
                   type: DATETIME
+        - addDefaultValue:
+            columnName: status
+            tableName: outbox_event
+            defaultValue: PENDING
+        - addDefaultValue:
+            columnName: created_at
+            tableName: outbox_event
+            defaultValueComputed: SYSUTCDATETIME()
+        - sql:
+            sql: ALTER TABLE outbox_event ADD CONSTRAINT CK_outbox_status CHECK (status IN ('PENDING','PUBLISHED','FAILED'))
 
   - changeSet:
       id: add-foreign-keys
@@ -232,3 +278,62 @@ databaseChangeLog:
             referencedTableName: transfer
             referencedColumnNames: id
             constraintName: fk_ledger_entry_transfer
+
+  - changeSet:
+      id: seed-sample-accounts
+      author: developer
+      changes:
+        - insert:
+            tableName: account
+            columns:
+              - column:
+                  name: account_number
+                  value: "0000001001"
+              - column:
+                  name: owner_name
+                  value: "สมชาย ใจดี"
+              - column:
+                  name: currency
+                  value: "THB"
+              - column:
+                  name: balance
+                  value: 1000.00
+              - column:
+                  name: status
+                  value: "ACTIVE"
+        - insert:
+            tableName: account
+            columns:
+              - column:
+                  name: account_number
+                  value: "0000001002"
+              - column:
+                  name: owner_name
+                  value: "สมหญิง มีเงิน"
+              - column:
+                  name: currency
+                  value: "THB"
+              - column:
+                  name: balance
+                  value: 5000.00
+              - column:
+                  name: status
+                  value: "ACTIVE"
+        - insert:
+            tableName: account
+            columns:
+              - column:
+                  name: account_number
+                  value: "0000001003"
+              - column:
+                  name: owner_name
+                  value: "วิชัย ร่ำรวย"
+              - column:
+                  name: currency
+                  value: "THB"
+              - column:
+                  name: balance
+                  value: 10000.00
+              - column:
+                  name: status
+                  value: "ACTIVE"

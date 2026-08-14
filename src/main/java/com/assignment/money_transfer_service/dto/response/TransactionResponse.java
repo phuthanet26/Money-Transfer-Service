@@ -13,5 +13,6 @@ public class TransactionResponse {
     private String entryType;
     private BigDecimal amount;
     private BigDecimal balanceAfter;
+    private Long transferId;
     private LocalDateTime createdAt;
 }

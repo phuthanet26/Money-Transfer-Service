@@ -11,11 +11,13 @@ import com.assignment.money_transfer_service.dto.response.PagedTransactionRespon
 import com.assignment.money_transfer_service.dto.response.TransactionResponse;
 import com.assignment.money_transfer_service.dto.response.WithdrawResponse;
 import com.assignment.money_transfer_service.exception.AccountNotFoundException;
+import com.assignment.money_transfer_service.exception.BusinessValidationException;
+import com.assignment.money_transfer_service.exception.ConflictException;
 import com.assignment.money_transfer_service.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,40 +28,62 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class AccountService {
 
     private final AccountRepository accountRepository;
     private final LedgerService ledgerService;
+    private final RedisLockService redisLockService;
+    private final RedisTemplate<String, Object> redisTemplate;
 
-    public AccountResponse createAccount(String accountNumber, String ownerName, String currency) {
-        validateAccountCreation(accountNumber, ownerName, currency);
+    @Transactional
+    public AccountResponse createAccount(String ownerName, String currency, BigDecimal initialBalance) {
+        validateAccountCreation(ownerName, currency, initialBalance);
         
         AccountEntity account = new AccountEntity();
-        account.setAccountNumber(accountNumber);
+        account.setAccountNumber(generateAccountNumber());
         account.setOwnerName(ownerName);
         account.setCurrency(currency);
-        account.setBalance(BigDecimal.ZERO);
+        account.setBalance(initialBalance);
         account.setStatus(AccountStatus.ACTIVE);
         account.setCreatedAt(LocalDateTime.now());
         account.setUpdatedAt(LocalDateTime.now());
         
         AccountEntity savedAccount = accountRepository.save(account);
-        return toResponse(savedAccount);
+        
+        if (initialBalance.compareTo(BigDecimal.ZERO) > 0) {
+            ledgerService.createLedgerEntry(
+                    account,
+                    null,
+                    initialBalance,
+                    EntryType.CREDIT,
+                    savedAccount.getBalance()
+            );
+        }
+        
+        return toResponseWithCreatedAt(savedAccount);
     }
 
-    private void validateAccountCreation(String accountNumber, String ownerName, String currency) {
-        if (accountNumber == null || accountNumber.isBlank()) {
-            throw new IllegalArgumentException("Account number is required");
-        }
+    private String generateAccountNumber() {
+        Long maxId = accountRepository.findMaxId();
+        long nextId = (maxId != null ? maxId : 0) + 1;
+        return String.format("%010d", nextId);
+    }
+
+    private void validateAccountCreation(String ownerName, String currency, BigDecimal initialBalance) {
         if (ownerName == null || ownerName.isBlank()) {
-            throw new IllegalArgumentException("Owner name is required");
+            throw new BusinessValidationException("Owner name is required");
         }
         if (currency == null || currency.isBlank()) {
-            throw new IllegalArgumentException("Currency is required");
+            throw new BusinessValidationException("Currency is required");
         }
-        if (accountRepository.existsByAccountNumber(accountNumber)) {
-            throw new IllegalArgumentException("Account number already exists: " + accountNumber);
+        if (currency.length() != 3) {
+            throw new BusinessValidationException("Currency must be 3 characters");
+        }
+        if (initialBalance == null) {
+            throw new BusinessValidationException("Initial balance is required");
+        }
+        if (initialBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessValidationException("Initial balance must be non-negative");
         }
     }
 
@@ -87,77 +111,114 @@ public class AccountService {
                 .toList();
     }
 
-    @CachePut(value = "accounts", key = "#accountId")
-    public AccountResponse updateAccountStatus(Long accountId, AccountStatus status) {
+    @Transactional
+public AccountResponse updateAccountStatus(Long accountId, String status) {
         AccountEntity account = getAccountOrThrow(accountId);
-        account.setStatus(status);
+        
+        AccountStatus accountStatus = validateAndParseStatus(status);
+        
+        if (accountStatus == AccountStatus.CLOSED && account.getBalance().compareTo(BigDecimal.ZERO) > 0) {
+            throw new ConflictException("Cannot close account with remaining balance");
+        }
+        
+        account.setStatus(accountStatus);
         account.setUpdatedAt(LocalDateTime.now());
         AccountEntity updatedAccount = accountRepository.save(account);
+        
+        redisTemplate.delete("accounts::" + accountId);
+        
         return toResponse(updatedAccount);
     }
 
-    @CachePut(value = "accounts", key = "#accountId")
+    private AccountStatus validateAndParseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            throw new BusinessValidationException("Status is required");
+        }
+        
+        try {
+            return AccountStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BusinessValidationException("Invalid status. Valid values are: ACTIVE, FROZEN, CLOSED");
+        }
+    }
+
+    @Transactional
     public DepositResponse deposit(Long accountId, BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Amount must be positive");
+        String lockToken = redisLockService.acquireLock(accountId);
+        if (lockToken == null) {
+            throw new ConflictException("Account is currently being processed. Please try again.");
         }
         
-        AccountEntity account = getActiveAccount(accountId);
-        
-        account.setBalance(account.getBalance().add(amount));
-        account.setUpdatedAt(LocalDateTime.now());
-        AccountEntity updatedAccount = accountRepository.save(account);
-        
-        LedgerEntryEntity ledgerEntry = ledgerService.createLedgerEntry(
-                account,
-                null,
-                amount,
-                EntryType.CREDIT,
-                updatedAccount.getBalance()
-        );
-        
-        return DepositResponse.builder()
-                .accountId(updatedAccount.getId())
-                .balance(updatedAccount.getBalance())
-                .ledgerEntryId(ledgerEntry.getId())
-                .build();
+        try {
+            AccountEntity account = getActiveAccountWithLock(accountId);
+            
+            account.setBalance(account.getBalance().add(amount));
+            account.setUpdatedAt(LocalDateTime.now());
+            AccountEntity updatedAccount = accountRepository.save(account);
+            
+            LedgerEntryEntity ledgerEntry = ledgerService.createLedgerEntry(
+                    account,
+                    null,
+                    amount,
+                    EntryType.CREDIT,
+                    updatedAccount.getBalance()
+            );
+            
+            redisTemplate.delete("accounts::" + accountId);
+            
+            return DepositResponse.builder()
+                    .accountId(updatedAccount.getId())
+                    .balance(updatedAccount.getBalance())
+                    .ledgerEntryId(ledgerEntry.getId())
+                    .build();
+        } finally {
+            redisLockService.releaseLock(accountId, lockToken);
+        }
     }
 
-    @CachePut(value = "accounts", key = "#accountId")
+    @Transactional
     public WithdrawResponse withdraw(Long accountId, BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Amount must be positive");
+        String lockToken = redisLockService.acquireLock(accountId);
+        if (lockToken == null) {
+            throw new ConflictException("Account is currently being processed. Please try again.");
         }
         
-        AccountEntity account = getActiveAccount(accountId);
-        
-        if (account.getBalance().compareTo(amount) < 0) {
-            throw new IllegalArgumentException("Insufficient balance");
+        try {
+            AccountEntity account = getActiveAccountWithLock(accountId);
+            
+            if (account.getBalance().compareTo(amount) < 0) {
+                throw new BusinessValidationException("Insufficient balance");
+            }
+            
+            account.setBalance(account.getBalance().subtract(amount));
+            account.setUpdatedAt(LocalDateTime.now());
+            AccountEntity updatedAccount = accountRepository.save(account);
+            
+            LedgerEntryEntity ledgerEntry = ledgerService.createLedgerEntry(
+                    account,
+                    null,
+                    amount,
+                    EntryType.DEBIT,
+                    updatedAccount.getBalance()
+            );
+            
+            redisTemplate.delete("accounts::" + accountId);
+            
+            return WithdrawResponse.builder()
+                    .accountId(updatedAccount.getId())
+                    .balance(updatedAccount.getBalance())
+                    .ledgerEntryId(ledgerEntry.getId())
+                    .build();
+        } finally {
+            redisLockService.releaseLock(accountId, lockToken);
         }
-        
-        account.setBalance(account.getBalance().subtract(amount));
-        account.setUpdatedAt(LocalDateTime.now());
-        AccountEntity updatedAccount = accountRepository.save(account);
-        
-        LedgerEntryEntity ledgerEntry = ledgerService.createLedgerEntry(
-                account,
-                null,
-                amount,
-                EntryType.DEBIT,
-                updatedAccount.getBalance()
-        );
-        
-        return WithdrawResponse.builder()
-                .accountId(updatedAccount.getId())
-                .balance(updatedAccount.getBalance())
-                .ledgerEntryId(ledgerEntry.getId())
-                .build();
     }
 
-    private AccountEntity getActiveAccount(Long accountId) {
-        AccountEntity account = getAccountOrThrow(accountId);
+    private AccountEntity getActiveAccountWithLock(Long accountId) {
+        AccountEntity account = accountRepository.findByIdForUpdate(accountId)
+                .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId));
         if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw new IllegalArgumentException("Account is not active: " + accountId);
+            throw new BusinessValidationException("Account is not active");
         }
         return account;
     }
@@ -182,7 +243,7 @@ public class AccountService {
             throw new IllegalArgumentException("Size must be between 1 and 100");
         }
         
-        AccountEntity account = getAccountOrThrow(accountId);
+        getAccountOrThrow(accountId);
         
         List<LedgerEntryEntity> ledgerEntries = ledgerService.getLedgerEntriesByAccount(accountId);
         
@@ -217,6 +278,7 @@ public class AccountService {
                 .entryType(entry.getType().name())
                 .amount(entry.getAmount())
                 .balanceAfter(entry.getBalanceAfter())
+                .transferId(entry.getTransfer() != null ? entry.getTransfer().getId() : null)
                 .createdAt(entry.getCreatedAt())
                 .build();
     }
@@ -228,14 +290,24 @@ public class AccountService {
 
     private AccountResponse toResponse(AccountEntity account) {
         return AccountResponse.builder()
-                .accountId(account.getId())
+                .id(account.getId())
                 .accountNumber(account.getAccountNumber())
-                .accountName(account.getOwnerName())
+                .ownerName(account.getOwnerName())
+                .balance(account.getBalance())
+                .currency(account.getCurrency())
+                .status(account.getStatus().name())
+                .build();
+    }
+
+    private AccountResponse toResponseWithCreatedAt(AccountEntity account) {
+        return AccountResponse.builder()
+                .id(account.getId())
+                .accountNumber(account.getAccountNumber())
+                .ownerName(account.getOwnerName())
                 .balance(account.getBalance())
                 .currency(account.getCurrency())
                 .status(account.getStatus().name())
                 .createdAt(account.getCreatedAt())
-                .updatedAt(account.getUpdatedAt())
                 .build();
     }
 }

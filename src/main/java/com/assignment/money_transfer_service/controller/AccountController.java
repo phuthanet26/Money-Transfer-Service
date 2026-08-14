@@ -1,7 +1,7 @@
 package com.assignment.money_transfer_service.controller;
 
-import com.assignment.money_transfer_service.domain.AccountStatus;
 import com.assignment.money_transfer_service.dto.request.AccountRequest;
+import com.assignment.money_transfer_service.dto.request.AccountStatusRequest;
 import com.assignment.money_transfer_service.dto.request.DepositRequest;
 import com.assignment.money_transfer_service.dto.request.WithdrawRequest;
 import com.assignment.money_transfer_service.dto.response.AccountResponse;
@@ -16,7 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
 @RestController
 @RequestMapping("/accounts")
@@ -28,11 +27,13 @@ public class AccountController {
     @PostMapping
     public ResponseEntity<AccountResponse> createAccount(@Valid @RequestBody AccountRequest request) {
         AccountResponse response = accountService.createAccount(
-                request.getAccountNumber(),
                 request.getOwnerName(),
-                request.getCurrency()
+                request.getCurrency(),
+                request.getInitialBalance()
         );
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header("Location", "/api/v1/accounts/" + response.getId())
+                .body(response);
     }
 
     @GetMapping("/{accountId}")
@@ -41,23 +42,11 @@ public class AccountController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/number/{accountNumber}")
-    public ResponseEntity<AccountResponse> getAccountByNumber(@PathVariable String accountNumber) {
-        AccountResponse response = accountService.getAccountByNumber(accountNumber);
-        return ResponseEntity.ok(response);
-    }
-
-    @GetMapping
-    public ResponseEntity<List<AccountResponse>> getAllAccounts() {
-        List<AccountResponse> responses = accountService.getAllAccounts();
-        return ResponseEntity.ok(responses);
-    }
-
     @PatchMapping("/{accountId}/status")
     public ResponseEntity<AccountResponse> updateAccountStatus(
             @PathVariable Long accountId,
-            @RequestParam AccountStatus status) {
-        AccountResponse response = accountService.updateAccountStatus(accountId, status);
+            @Valid @RequestBody AccountStatusRequest request) {
+        AccountResponse response = accountService.updateAccountStatus(accountId, request.getStatus());
         return ResponseEntity.ok(response);
     }
 

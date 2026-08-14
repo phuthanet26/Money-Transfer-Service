@@ -18,7 +18,7 @@ public class AccountEntity {
     @Column(unique = true, nullable = false, length = 20)
     private String accountNumber;
 
-    @Column(nullable = false, length = 120)
+    @Column(nullable = false, length = 120, columnDefinition = "NVARCHAR(120)")
     private String ownerName;
 
     @Column(nullable = false, length = 3)

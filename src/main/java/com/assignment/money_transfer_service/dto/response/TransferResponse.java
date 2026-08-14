@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
 public class TransferResponse {
 
     private Long transferId;
-    private String idempotencyKey;
+    private String status;
     private Long fromAccountId;
     private Long toAccountId;
     private BigDecimal amount;
     private String currency;
-    private String status;
     private LocalDateTime createdAt;
+    private String failureReason;
 }

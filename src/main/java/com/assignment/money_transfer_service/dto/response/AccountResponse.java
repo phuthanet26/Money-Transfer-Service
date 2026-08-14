@@ -11,25 +11,11 @@ import java.time.LocalDateTime;
 @Builder
 public class AccountResponse {
 
-    private Long accountId;
+    private Long id;
     private String accountNumber;
-    private String accountName;
+    private String ownerName;
     private BigDecimal balance;
     private String currency;
     private String status;
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-
-    public static AccountResponse fromEntity(AccountEntity account) {
-        return AccountResponse.builder()
-                .accountId(account.getAccountId())
-                .accountNumber(account.getAccountNumber())
-                .accountName(account.getAccountName())
-                .balance(account.getBalance())
-                .currency(account.getCurrency())
-                .status(account.getStatus().name())
-                .createdAt(account.getCreatedAt())
-                .updatedAt(account.getUpdatedAt())
-                .build();
-    }
 }

@@ -39,7 +39,7 @@ public class TransferEntity {
     @Column(nullable = false, length = 64)
     private String requestHash;
 
-    @Column(length = 255)
+    @Column(length = 255, columnDefinition = "NVARCHAR(255)")
     private String failureReason;
 
     @Column(nullable = false, updatable = false)
