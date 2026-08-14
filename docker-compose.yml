@@ -6,7 +6,7 @@ services:
     container_name: money-transfer-sqlserver
     environment:
       ACCEPT_EULA: Y
-      SA_PASSWORD: YourStrong@Passw0rd
+      SA_PASSWORD: ${SA_PASSWORD}
       MSSQL_PID: Developer
     ports:
       - "1433:1433"
@@ -14,7 +14,7 @@ services:
       - sqlserver_data:/var/opt/mssql
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
-      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -C -Q "SELECT 1"
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P ${SA_PASSWORD} -C -Q "SELECT 1"
       interval: 10s
       timeout: 5s
       retries: 5
@@ -60,8 +60,8 @@ services:
       - "8082:8081"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:sqlserver://sqlserver:1433;databaseName=MoneyTransferDB;trustServerCertificate=true;sendStringParametersAsUnicode=true;encrypt=false
-      - SPRING_DATASOURCE_USERNAME=sa
-      - SPRING_DATASOURCE_PASSWORD=YourStrong@Passw0rd
+      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
       - IBM_MQ_CONN_NAME=ibmmq(1414)
